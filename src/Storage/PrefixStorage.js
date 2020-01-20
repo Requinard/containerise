@@ -4,8 +4,36 @@ export default class PrefixStorage {
     this.PREFIX = '';
     // The key to use to get the name of the object when calling set()
     this.SET_KEY = 'key';
-    this.storage = browser.storage.local;
+    this.storage = (browser.storage.sync || browser.storage.local);
     this.listeners = new Map();
+
+    if (browser.storage.sync) {
+      // If we're on a syncable browser
+      this.migrate();
+    }
+  }
+
+  /**
+   * Migrate from localstorage to syncstorage
+   */
+  async migrate() {
+    const all = await this.getAll();
+
+    if (all.length === 0) {
+      const localItems = await this.storage.get(null)
+        .then(results => Object
+          .keys(results)
+          .filter((key) => key.startsWith(this.PREFIX))
+          .reduce((newObject, key) => {
+            newObject[
+              key.replace(this.PREFIX, '')
+              ] = results[key];
+            return newObject;
+          }, {}),
+        );
+
+      this.setAll(localItems);
+    }
   }
 
   /**
@@ -22,16 +50,16 @@ export default class PrefixStorage {
 
   }
 
-  _getNonPrefixedObject(prefixedObject){
+  _getNonPrefixedObject(prefixedObject) {
     return Object
-          .keys(prefixedObject)
-          .filter((key) => key.startsWith(this.PREFIX))
-          .reduce((newObject, key) => {
-            newObject[
-                key.replace(this.PREFIX, '')
-                ] = prefixedObject[key];
-            return newObject;
-          }, {});
+      .keys(prefixedObject)
+      .filter((key) => key.startsWith(this.PREFIX))
+      .reduce((newObject, key) => {
+        newObject[
+          key.replace(this.PREFIX, '')
+          ] = prefixedObject[key];
+        return newObject;
+      }, {});
   }
 
   async get(key) {
@@ -60,7 +88,7 @@ export default class PrefixStorage {
    */
   remove(keys) {
     keys = Array.isArray(keys) ? keys : [keys];
-    return this.storage.remove(keys.map( key => `${this.PREFIX}${key}`));
+    return this.storage.remove(keys.map(key => `${this.PREFIX}${key}`));
   }
 
   /**
@@ -76,17 +104,17 @@ export default class PrefixStorage {
    * @param fn {Function<Object, String>}
    */
   addOnChangedListener(fn) {
-    if(fn in this.listeners){
+    if (fn in this.listeners) {
       return;
     }
     const listener = (changes, area) => {
       let prefixChanges = this._getNonPrefixedObject(changes);
-      if(!prefixChanges){
+      if (!prefixChanges) {
         return;
       }
       fn(prefixChanges, area);
     };
-    this.listeners[fn]=listener;
+    this.listeners[fn] = listener;
     browser.storage.onChanged.addListener(listener);
   }
 
